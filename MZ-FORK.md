@@ -20,15 +20,15 @@ Branched from the upstream `v2.1.0` tag, so **the plugin's own source is byte-fo
 upstream**. Only the build inputs move:
 
 - `go.mod` / `go.sum` — `go get -u ./...` + `go mod tidy`, which also pulls
-  `grafana-plugin-sdk-go` from v0.274.0 to v0.294.0 and raises the `go` directive to
-  1.26.5.
+  `grafana-plugin-sdk-go` from v0.274.0 to v0.299.0 (as of `-mz.2`) and raises the `go`
+  directive to 1.26.11, so a build with an older, unpatched Go toolchain is refused.
 - `.github/workflows/release.yml` — `go-version` from `1.23` to `1.26.x`. This matters:
   several findings are Go **stdlib** CVEs that are only fixed in 1.26.x, so the
   toolchain version is part of the fix, not an incidental detail.
 - `.github/workflows/release.yml` — build only `build:linux build:linuxARM64`. Upstream
   also ships darwin/windows/linuxARM; we deploy to Fargate only. ARM64 is retained
   deliberately so the artifact survives an arm64 migration of the Grafana task.
-- `package.json` — version `2.1.0-mz.1`, to distinguish our rebuild from a genuine
+- `package.json` — version `2.1.0-mz.N`, to distinguish our rebuild from a genuine
   upstream `v2.1.0` and to satisfy the release workflow's tag/version equality check.
 
 Verified before publishing: `go vet` clean, `go test ./pkg/...` passes all four
@@ -46,7 +46,7 @@ bounds is a separate, deliberate decision.
 
 ## Releasing
 
-Tag `v2.1.0-mz.1`; `release.yml` builds and attaches
+Bump `package.json` to `2.1.0-mz.N` and tag `v2.1.0-mz.N`; `release.yml` builds and attaches
 `snowflake-grafana-datasource.zip`. The tag must equal `v` + `package.json` version or
 the workflow fails its own check. i2's Grafana `Dockerfile` installs that zip by URL.
 
@@ -64,5 +64,15 @@ None of this is a good place to live. Better endings, roughly in order:
 2. We move to a maintained alternative Snowflake datasource.
 3. We drop the datasource if it stops being used.
 
-Until then, re-run `go get -u ./... && go mod tidy` and cut a new `-mz.N` tag whenever
-Inspector lights up again.
+Until then, re-run `go get -u ./... && go mod tidy` (and raise the `go` directive to the
+latest 1.26.x patch) and cut a new `-mz.N` tag whenever Inspector lights up again. Check
+with `govulncheck ./...` before tagging.
+
+## Known residual finding
+
+`GO-2026-6665` / `GHSA-qqj6-54q6-cxv6` (medium; gosnowflake can write tokens and keys to
+its diagnostic logs). No fix exists for `github.com/snowflakedb/gosnowflake` v1; it is
+fixed only in the separate `gosnowflake/v2` module (>= v2.2.0). Moving to v2 needs
+plugin source changes (v2 drops the `MaxChunkDownloadWorkers` and
+`CustomJSONDecoderEnabled` globals this plugin sets), and upstream master is still on
+v1, so it is out of scope for a dependency-only rebuild.
